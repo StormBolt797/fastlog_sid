@@ -8,6 +8,12 @@ struct Log {
     int latency;
 };
 
+struct Filter {
+    string level;
+    string user;
+    int min_latency = -1;
+};
+
 inline Log parse_line(const string& line) {
     Log log;
 
@@ -47,6 +53,21 @@ int main(int argc, char* argv[]) {
     }
 
     string filename = argv[1];
+
+    Filter filter;
+    for (int i = 2; i < argc; i++) {
+        string arg = argv[i];
+        if (arg == "--level" && i + 1 < argc) {
+            filter.level = argv[++i];
+        } else if (arg == "--user" && i + 1 < argc) {
+            filter.user = argv[++i];
+        } else if (arg == "--min-latency" && i + 1 < argc) {
+            filter.min_latency = stoi(argv[++i]);
+        } else if (filter.level.empty() && (arg == "INFO" || arg == "WARN" || arg == "ERROR" || arg == "DEBUG")) {
+            filter.level = arg;
+        }
+    }
+
     ifstream file(filename);
 
     if (!file.is_open()) {
