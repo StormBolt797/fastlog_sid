@@ -19,23 +19,19 @@ inline Log parse_line(const string& line) {
 
     const char* p = line.c_str();
 
-    // skip timestamp
     while (*p && *p != ' ') p++;
     p++;
 
-    // level
     const char* start = p;
     while (*p && *p != ' ') p++;
     log.level = string(start, p - start);
     p++;
 
-    // user
     start = p;
     while (*p && *p != ' ') p++;
     log.user = string(start, p - start);
     p++;
 
-    // latency
     int latency = 0;
     while (*p >= '0' && *p <= '9') {
         latency = latency * 10 + (*p - '0');
@@ -48,7 +44,7 @@ inline Log parse_line(const string& line) {
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        cout << "Usage: ./fastlog <file>\n";
+        cout << "Usage: ./base <file> [--level <LEVEL>] [--user <USER>] [--min-latency <MS>]\n";
         return 1;
     }
 
@@ -80,16 +76,18 @@ int main(int argc, char* argv[]) {
 
     string line;
 
-    // -------- READ --------
     auto read_start = steady_clock::now();
 
     while (getline(file, line)) {
-        logs.push_back(parse_line(line));
+        Log log = parse_line(line);
+        if (!filter.level.empty() && log.level != filter.level) continue;
+        if (!filter.user.empty() && log.user != filter.user) continue;
+        if (filter.min_latency >= 0 && log.latency < filter.min_latency) continue;
+        logs.push_back(move(log));
     }
 
     auto read_end = steady_clock::now();
 
-    // -------- PROCESS --------
     auto proc_start = steady_clock::now();
 
     unordered_map<string, int> level_count;
@@ -106,22 +104,21 @@ int main(int argc, char* argv[]) {
         latencies.push_back(log.latency);
     }
 
-    // Average
-    double avg_latency = (double)total_latency / logs.size();
+    double avg_latency = logs.empty() ? 0.0 : (double)total_latency / logs.size();
 
-    // Top 10 users
     vector<pair<string, int>> users(user_count.begin(), user_count.end());
     sort(users.begin(), users.end(),
          [](auto& a, auto& b) { return a.second > b.second; });
 
-    // 95th percentile
-    size_t idx = 0.95 * latencies.size();
-    nth_element(latencies.begin(), latencies.begin() + idx, latencies.end());
-    int p95 = latencies[idx];
+    int p95 = 0;
+    if (!latencies.empty()) {
+        size_t idx = 0.95 * latencies.size();
+        nth_element(latencies.begin(), latencies.begin() + idx, latencies.end());
+        p95 = latencies[idx];
+    }
 
     auto proc_end = steady_clock::now();
 
-    // -------- OUTPUT --------
     cout << "Log Level Counts:\n";
     for (auto& p : level_count) {
         cout << p.first << ": " << p.second << "\n";
@@ -130,7 +127,7 @@ int main(int argc, char* argv[]) {
     cout << "\nAverage Latency: " << avg_latency << " ms\n";
 
     cout << "\nTop 10 Users:\n";
-    for (int i = 0; i < 10 && i < users.size(); i++) {
+    for (int i = 0; i < 10 && i < (int)users.size(); i++) {
         cout << users[i].first << " : " << users[i].second << "\n";
     }
 
