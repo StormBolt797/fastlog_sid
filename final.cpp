@@ -4,7 +4,11 @@
 using namespace std;
 using namespace std::chrono;
 
-// Per-thread local result
+struct Filter {
+    string level;
+    string user;
+    int min_latency = -1;
+};
 
 struct t_result {
     vector<int> level_count = vector<int>(4, 0);
@@ -105,11 +109,25 @@ void worker(const string& filename, long long byte_start, long long byte_end, t_
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        cout << "Usage: ./final <file>\n";
+        cout << "Usage: ./final <file> [--level <LEVEL>] [--user <USER>] [--min-latency <MS>]\n";
         return 1;
     }
 
     string filename = argv[1];
+
+    Filter filter;
+    for (int i = 2; i < argc; i++) {
+        string arg = argv[i];
+        if (arg == "--level" && i + 1 < argc) {
+            filter.level = argv[++i];
+        } else if (arg == "--user" && i + 1 < argc) {
+            filter.user = argv[++i];
+        } else if (arg == "--min-latency" && i + 1 < argc) {
+            filter.min_latency = stoi(argv[++i]);
+        } else if (filter.level.empty() && (arg == "INFO" || arg == "WARN" || arg == "ERROR" || arg == "DEBUG")) {
+            filter.level = arg;
+        }
+    }
 
     ifstream tmp(filename, ios::binary | ios::ate);
     if (!tmp.is_open()) {
