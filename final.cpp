@@ -7,7 +7,7 @@ using namespace std::chrono;
 // Per-thread local result
 
 struct t_result {
-    vector<int> level_count{4, 0};
+    vector<int> level_count = vector<int>(4, 0);
     unordered_map<string, int> user_count;
     vector<int> latencies;
     long long total_latency = 0;
