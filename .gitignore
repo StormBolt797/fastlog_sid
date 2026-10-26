@@ -5,6 +5,12 @@ lib/
 *.dSYM/
 .cache/
 fastlog
+fastlog_*
+base
+final
+fastlog_test
+*.exe
+*.out
 
 # IDE
 .vscode/
