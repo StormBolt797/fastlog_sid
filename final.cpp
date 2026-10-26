@@ -17,33 +17,33 @@ struct t_result {
     long long total_latency = 0;
 };
 
-// Parse one line into t_result
-
-inline void parse_line(const char* start, const char* end, t_result& res) {
+inline void parse_line(const char* start, const char* end, t_result& res, const Filter& filter) {
     const char* p = start;
 
-    // skip timestamp
     while (p < end && *p != ' ') p++;
     p++;
 
-    // level
     const char* lvl_start = p;
     while (p < end && *p != ' ') p++;
     string_view level(lvl_start, p - lvl_start);
     p++;
 
-    // user
+    if (!filter.level.empty() && level != filter.level) return;
+
     const char* userstart = p;
     while (p < end && *p != ' ') p++;
     string_view user(userstart, p - userstart);
     p++;
 
-    // latency
+    if (!filter.user.empty() && user != filter.user) return;
+
     int latency = 0;
     while (p < end && *p >= '0' && *p <= '9') {
         latency = latency * 10 + (*p - '0');
         p++;
     }
+
+    if (filter.min_latency >= 0 && latency < filter.min_latency) return;
 
     if (level == "INFO")  res.level_count[0]++;
     if (level == "WARN")  res.level_count[1]++;
@@ -55,9 +55,7 @@ inline void parse_line(const char* start, const char* end, t_result& res) {
     res.latencies.push_back(latency);
 }
 
-// Worker: reads and parses from file
-
-void worker(const string& filename, long long byte_start, long long byte_end, t_result& t_res) {
+void worker(const string& filename, long long byte_start, long long byte_end, t_result& t_res, const Filter& filter) {
     ifstream file(filename, ios::binary);
     if (!file.is_open()) return;
 
@@ -91,10 +89,10 @@ void worker(const string& filename, long long byte_start, long long byte_end, t_
             }
             if (!leftover.empty()) {
                 leftover.append(p, nl - p);
-                parse_line(leftover.data(), leftover.data() + leftover.size(), t_res);
+                parse_line(leftover.data(), leftover.data() + leftover.size(), t_res, filter);
                 leftover.clear();
             } else {
-                parse_line(p, nl, t_res);
+                parse_line(p, nl, t_res, filter);
             }
             p = nl + 1;
         }
@@ -103,7 +101,7 @@ void worker(const string& filename, long long byte_start, long long byte_end, t_
     }
 
     if (!leftover.empty()) {
-        parse_line(leftover.data(), leftover.data() + leftover.size(), t_res);
+        parse_line(leftover.data(), leftover.data() + leftover.size(), t_res, filter);
     }
 }
 
@@ -149,30 +147,24 @@ int main(int argc, char* argv[]) {
 
     long long mid = split;
 
-    // -------- READ + PARSE --------
-
     t_result t0_res, t1_res;
 
     auto read_parse_start = steady_clock::now();
 
-    thread t0(worker, filename, 0LL, mid, ref(t0_res));
-    thread t1(worker, filename, mid, file_size, ref(t1_res));
+    thread t0(worker, filename, 0LL, mid, ref(t0_res), cref(filter));
+    thread t1(worker, filename, mid, file_size, ref(t1_res), cref(filter));
 
     t0.join();
     t1.join();
 
     auto read_parse_end = steady_clock::now();
 
-    // -------- MERGE --------
-
     auto proc_start = steady_clock::now();
 
-    // Level counts
     vector<int> level_count(4);
     for (int i = 0; i < 4; i++)
         level_count[i] = t0_res.level_count[i] + t1_res.level_count[i];
 
-    // Latencies
     vector<int>& latencies = t0_res.latencies;
     latencies.insert(latencies.end(), make_move_iterator(t1_res.latencies.begin()), make_move_iterator(t1_res.latencies.end()));
     t1_res.latencies.clear();
@@ -180,18 +172,13 @@ int main(int argc, char* argv[]) {
 
     long long total_latency = t0_res.total_latency + t1_res.total_latency;
 
-    // User counts (merge smaller map into larger for speed)
     auto& big   = (t0_res.user_count.size() >= t1_res.user_count.size()) ? t0_res.user_count : t1_res.user_count;
     auto& small = (t0_res.user_count.size() >= t1_res.user_count.size()) ? t1_res.user_count : t0_res.user_count;
     for (auto& [user, cnt] : small)
         big[user] += cnt;
 
-    // -------- PROCESS --------
+    double avg_latency = latencies.empty() ? 0.0 : (double)total_latency / latencies.size();
 
-    // Average latency
-    double avg_latency = (double)total_latency / latencies.size();
-
-    // Top 10 users
     priority_queue<pair<int,string_view>, vector<pair<int,string_view>>, greater<pair<int,string_view>>> min_heap;
 
     for (const auto& [user, freq] : big) {
@@ -205,14 +192,15 @@ int main(int argc, char* argv[]) {
     }
     reverse(top10.begin(), top10.end());
 
-    // 95th percentile
-    size_t idx = (size_t)(0.95 * latencies.size());
-    nth_element(latencies.begin(), latencies.begin() + idx, latencies.end());
-    int p95 = latencies[idx];
+    int p95 = 0;
+    if (!latencies.empty()) {
+        size_t idx = (size_t)(0.95 * latencies.size());
+        nth_element(latencies.begin(), latencies.begin() + idx, latencies.end());
+        p95 = latencies[idx];
+    }
 
     auto proc_end = steady_clock::now();
 
-    // -------- OUTPUT --------
     cout << "Log Level Counts:\n";
     cout << "INFO: " << level_count[0] << "\n";
     cout << "WARN: " << level_count[1] << "\n";
