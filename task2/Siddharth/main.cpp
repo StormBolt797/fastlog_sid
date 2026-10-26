@@ -48,7 +48,7 @@ void TopUsers(const vector<Parser> &v){
         count.push_back({i.second,i.first});
     }
     sort(count.rbegin(),count.rend());
-    for(int i=0;i<10;i++){
+    for(int i=0;i<10 && i<(int)count.size();i++){
         cout<<i<<"."<<count[i].second<<endl;
     }
 }
@@ -61,15 +61,14 @@ void PercentileLatency(const vector<Parser> &v){
     int index = floor(0.95*v.size());
     cout<<"95th percentile latency is: "<<latencylist[index]<<endl;
 }
-int32_t main() {
+int32_t main(int32_t argc, char* argv[]) {
     fastio;
     int t = 1;
-    // cin >> t;
     while(t--) {
-        // your code
     }
     vector<Parser> Parservec;
-    fstream file("/home/siddharth/fastlog_sid/log generator/tc1.log");
+    string filename = (argc > 1) ? argv[1] : "log generator/tc1.log";
+    fstream file(filename);
     string line;
     auto starttime = chrono::steady_clock::now();
     while(getline(file,line)){
