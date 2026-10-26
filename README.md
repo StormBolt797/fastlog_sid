@@ -70,14 +70,49 @@ The engine processes ISO8601-timestamped log files with the following structure:
 ## How to Run
 
 ### Prerequisites
-- C++17 compliant compiler (GCC/Clang/MSVC)
+- C++17 compliant compiler (GCC/Clang)
 
-### Build
+### 1. Generate Test Data
 ```bash
-g++ -Iinclude src/main.cpp -o fastlog
+g++ -O3 "log generator/generator.cpp" -o generate_logs
+./generate_logs
 ```
 
-### Run
+### 2. Build
+
+#### Build Main Application:
+```bash
+g++ -O3 -std=c++17 -pthread -Iinclude src/main.cpp -o fastlog
+```
+
+#### Build Baseline Implementation:
+```bash
+g++ -O3 -std=c++17 base.cpp -o fastlog_base
+```
+
+#### Build Optimized Implementation:
+```bash
+g++ -O3 -std=c++17 -pthread final.cpp -o fastlog_final
+```
+
+### 3. Run and Filter
+
+#### Run Full Aggregation:
 ```bash
 ./fastlog "log generator/tc1.log"
+```
+
+#### Run with Filtering:
+```bash
+# Filter by log level
+./fastlog "log generator/tc1.log" --level ERROR
+
+# Filter by user
+./fastlog "log generator/tc1.log" --user user2875
+
+# Filter by minimum latency
+./fastlog "log generator/tc1.log" --min-latency 400
+
+# Combine filters
+./fastlog "log generator/tc1.log" --level WARN --min-latency 300
 ```
